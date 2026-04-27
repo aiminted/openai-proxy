@@ -1,0 +1,31 @@
+{{template "layout" .}}
+{{define "title"}}{{.Key.Owner}} · openai-proxy{{end}}
+{{define "content"}}
+  {{with .Key}}
+  <section class="card">
+    <p><a href="/">← 키 목록으로</a></p>
+    <h2><code>{{.Prefix}}…</code></h2>
+    <dl class="meta">
+      <dt>owner</dt><dd>{{.Owner}}</dd>
+      <dt>note</dt><dd>{{if .Note}}{{.Note}}{{else}}—{{end}}</dd>
+      <dt>created</dt><dd>{{.CreatedAt.Format "2006-01-02 15:04"}}</dd>
+      <dt>expires</dt><dd>{{fmtTime .ExpiresAt}}</dd>
+      <dt>last used</dt><dd>{{fmtTime .LastUsedAt}}</dd>
+      <dt>active</dt><dd>{{if .Active}}yes{{else}}no{{end}}</dd>
+      <dt>RPM limit</dt><dd>{{fmtIntPtr .RPMLimit}}</dd>
+      <dt>token quota</dt><dd>{{fmtInt64Ptr .TokenQuota}}</dd>
+      <dt>dollar quota</dt><dd>{{fmtFloatPtr .DollarQuota}}</dd>
+      <dt>total tokens</dt><dd>{{fmtInt .TotalTokens}}</dd>
+      <dt>total cost</dt><dd>{{fmtDollar .TotalCostUSD}}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h3>최근 요청</h3>
+    <div id="recent" data-key-id="{{.ID}}">
+      <p class="empty">불러오는 중…</p>
+    </div>
+    <script src="/static/recent.js" defer></script>
+  </section>
+  {{end}}
+{{end}}

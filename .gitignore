@@ -1,0 +1,4 @@
+openai-proxy
+*.log
+.env
+.env.local

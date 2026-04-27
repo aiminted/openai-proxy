@@ -1,0 +1,43 @@
+# OpenAI pricing per 1M tokens (USD), April 2026.
+# Source: https://openai.com/api/pricing/
+# Lookup is exact-match first, then progressively shorter prefixes
+# (e.g. gpt-5.5-2026-04-24 -> gpt-5.5). Update when prices change.
+# Models not listed here record token counts but cost is recorded as 0.
+models:
+  gpt-5.5:
+    input: 5.00
+    cached: 0.50
+    output: 30.00
+  gpt-5.5-pro:
+    input: 30.00
+    output: 180.00
+  gpt-5.4:
+    input: 2.50
+    cached: 0.25
+    output: 15.00
+  gpt-5.4-mini:
+    input: 0.75
+    cached: 0.075
+    output: 4.50
+  gpt-5.4-nano:
+    input: 0.20
+    cached: 0.02
+    output: 1.25
+  gpt-5.4-pro:
+    input: 30.00
+    output: 180.00
+  gpt-5.3-chat-latest:
+    input: 1.75
+    output: 14.00
+  gpt-5.3-codex:
+    input: 1.75
+    output: 14.00
+  o3-deep-research:
+    input: 5.00
+    output: 20.00
+  text-embedding-3-small:
+    input: 0.02
+    output: 0
+  text-embedding-3-large:
+    input: 0.13
+    output: 0

@@ -1,0 +1,62 @@
+{{template "layout" .}}
+{{define "title"}}keys · openai-proxy{{end}}
+{{define "content"}}
+  {{if .IssuedKey}}
+    <section class="card issued">
+      <h2>새 키 발급됨 — 한 번만 표시됩니다</h2>
+      <pre class="key">{{.IssuedKey}}</pre>
+      <p>이 값을 안전한 곳에 복사해 두세요. 다시 볼 수 없습니다.</p>
+      <a href="/">닫기</a>
+    </section>
+  {{end}}
+
+  <section class="card">
+    <h2>새 API 키 발급</h2>
+    <form method="post" action="/keys" class="grid">
+      <label>owner<input type="text" name="owner" required placeholder="user@example.com 또는 이름"></label>
+      <label>note<input type="text" name="note" placeholder="자유 메모"></label>
+      <label>expires (선택)<input type="date" name="expires_at"></label>
+      <label>RPM limit (선택)<input type="number" name="rpm_limit" min="1" placeholder="분당 요청수"></label>
+      <label>token quota (선택)<input type="number" name="token_quota" min="1" placeholder="누적 토큰 한도"></label>
+      <label>dollar quota (선택)<input type="number" name="dollar_quota" min="0" step="0.01" placeholder="누적 달러 한도"></label>
+      <button type="submit">발급</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>발급된 키 ({{len .Keys}})</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>prefix</th><th>owner</th><th>tokens</th><th>cost</th>
+          <th>expires</th><th>RPM</th><th>last used</th><th>active</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Keys}}
+          <tr>
+            <td><a href="/keys/{{.ID}}"><code>{{.Prefix}}…</code></a></td>
+            <td>{{.Owner}}</td>
+            <td>{{fmtInt .TotalTokens}}</td>
+            <td>{{fmtDollar .TotalCostUSD}}</td>
+            <td>{{fmtTime .ExpiresAt}}</td>
+            <td>{{fmtIntPtr .RPMLimit}}</td>
+            <td>{{fmtTime .LastUsedAt}}</td>
+            <td>{{if .Active}}<span class="badge ok">on</span>{{else}}<span class="badge off">off</span>{{end}}</td>
+            <td>
+              <form method="post" action="/keys/{{.ID}}/active" class="inline">
+                <input type="hidden" name="active" value="{{if .Active}}false{{else}}true{{end}}">
+                <button type="submit" class="link">{{if .Active}}revoke{{else}}reactivate{{end}}</button>
+              </form>
+              <form method="post" action="/keys/{{.ID}}/delete" class="inline" onsubmit="return confirm('정말 삭제할까요? 사용 기록도 같이 삭제됩니다.')">
+                <button type="submit" class="link danger">delete</button>
+              </form>
+            </td>
+          </tr>
+        {{else}}
+          <tr><td colspan="9" class="empty">아직 발급된 키가 없습니다.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </section>
+{{end}}

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login · openai-proxy</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login">
+  <form method="post" action="/login" class="card login-card">
+    <h1>openai-proxy</h1>
+    {{if .Error}}<p class="error">invalid password</p>{{end}}
+    <label>
+      <span>admin password</span>
+      <input type="password" name="password" autofocus required>
+    </label>
+    <button type="submit">sign in</button>
+  </form>
+</body>
+</html>
