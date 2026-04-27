@@ -85,7 +85,10 @@ func run(logger *slog.Logger) error {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })
 
-	mux.Handle("/v1/", proxyHandler)
+	// CORS applies to both the proxy and the admin API: any origin in
+	// CORS_ORIGINS can call /v1/* from the browser (e.g. admin's "test now"
+	// button) and /admin/api/* (the SPA itself).
+	mux.Handle("/v1/", api.CORS(proxyHandler))
 
 	apiMux := http.NewServeMux()
 	api.Mount(apiMux)
