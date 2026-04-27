@@ -73,7 +73,7 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /login", h.loginPost)
 	mux.HandleFunc("POST /logout", h.logout)
 
-	mux.Handle("GET /", h.auth.Middleware("/login", http.HandlerFunc(h.dashboard)))
+	mux.Handle("GET /{$}", h.auth.Middleware("/login", http.HandlerFunc(h.dashboard)))
 	mux.Handle("GET /keys/{id}", h.auth.Middleware("/login", http.HandlerFunc(h.keyDetail)))
 	mux.Handle("POST /keys", h.auth.Middleware("/login", http.HandlerFunc(h.createKey)))
 	mux.Handle("POST /keys/{id}/active", h.auth.Middleware("/login", http.HandlerFunc(h.toggleActive)))
