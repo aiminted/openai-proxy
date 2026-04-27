@@ -184,7 +184,9 @@ main { max-width: 1100px; margin: 24px auto; padding: 0 24px; }
 .toolbar-controls input[type="search"]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
 
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.keys-table { min-width: 760px; }
 th, td {
   text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border);
   vertical-align: middle;

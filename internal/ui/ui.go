@@ -41,11 +41,11 @@ func New(k *keys.Service, auth *admin.Auth, sessionSecret string, cookieSecure b
 			}
 			return t.Local().Format("2006-01-02 15:04")
 		},
-		"fmtDollar":   func(v float64) string { return fmt.Sprintf("$%.4f", v) },
+		"fmtDollar":   fmtDollar,
 		"fmtInt":      formatInt,
 		"fmtIntPtr":   func(v *int) string { if v == nil { return "—" }; return strconv.Itoa(*v) },
 		"fmtInt64Ptr": func(v *int64) string { if v == nil { return "—" }; return formatInt(*v) },
-		"fmtFloatPtr": func(v *float64) string { if v == nil { return "—" }; return fmt.Sprintf("$%.2f", *v) },
+		"fmtFloatPtr": func(v *float64) string { if v == nil { return "—" }; return fmtDollar(*v) },
 	}
 
 	pages := map[string]*template.Template{}
@@ -230,6 +230,27 @@ func (h *Handler) render(w http.ResponseWriter, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// fmtDollar prints USD with the smallest number of trailing digits that
+// preserves precision for the magnitude at hand: $0 for zero, $0.001234 for
+// micro-amounts, $0.12 for normal values, $1,234.56 for larger ones.
+func fmtDollar(v float64) string {
+	if v == 0 {
+		return "$0"
+	}
+	abs := v
+	if abs < 0 {
+		abs = -abs
+	}
+	switch {
+	case abs < 0.01:
+		return fmt.Sprintf("$%.6f", v)
+	case abs < 1:
+		return fmt.Sprintf("$%.4f", v)
+	default:
+		return fmt.Sprintf("$%.2f", v)
 	}
 }
 
