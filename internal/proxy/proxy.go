@@ -154,6 +154,11 @@ func (p *Proxy) buildUpstreamRequest(r *http.Request, body io.Reader, contentLen
 	req.Header.Set("Authorization", "Bearer "+p.deps.UpstreamKey)
 	req.Header.Del("X-Forwarded-For")
 	req.Header.Del("X-Forwarded-Host")
+	// Remove Accept-Encoding so Go's Transport handles gzip transparently:
+	// it negotiates compression with the upstream and decompresses the body
+	// for us. Without this, the tail buffer captures raw gzip bytes and the
+	// usage block can't be extracted from chat/embeddings responses.
+	req.Header.Del("Accept-Encoding")
 	req.Host = p.deps.Upstream.Host
 	req.ContentLength = contentLength
 	if bodyModified {
