@@ -205,6 +205,11 @@ func readBody(r *http.Request) (*PreparedBody, io.Reader, int64, error) {
 // after every chunk for SSE, while keeping the trailing window for usage.
 func streamResponse(w http.ResponseWriter, resp *http.Response) *tailBuffer {
 	for k, vs := range resp.Header {
+		// Drop upstream CORS headers; our own CORS middleware already set
+		// them and duplicating both values trips browser preflight checks.
+		if upstreamSkipHeaders[http.CanonicalHeaderKey(k)] {
+			continue
+		}
 		for _, v := range vs {
 			w.Header().Add(k, v)
 		}
@@ -237,6 +242,19 @@ var hopByHop = map[string]bool{
 	"Proxy-Authorization": true,
 	"Authorization":       true,
 	"Host":                true,
+}
+
+// upstreamSkipHeaders are response headers we never forward from the upstream
+// API. CORS headers in particular: our own CORS middleware sets them based on
+// the configured allowlist, and forwarding the upstream's values too would
+// produce duplicates that browsers reject.
+var upstreamSkipHeaders = map[string]bool{
+	"Access-Control-Allow-Origin":      true,
+	"Access-Control-Allow-Methods":     true,
+	"Access-Control-Allow-Headers":     true,
+	"Access-Control-Allow-Credentials": true,
+	"Access-Control-Expose-Headers":    true,
+	"Access-Control-Max-Age":           true,
 }
 
 func copyHeaders(dst, src http.Header) {
