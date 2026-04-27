@@ -80,7 +80,7 @@ func run(logger *slog.Logger) error {
 
 	auth := admin.NewAuth(cfg.AdminPassword, cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure)
 	api := admin.NewAPI(keySvc, st.DB)
-	uiHandler, err := ui.New(keySvc, auth)
+	uiHandler, err := ui.New(keySvc, auth, cfg.SessionSecret, cfg.CookieSecure)
 	if err != nil {
 		return err
 	}

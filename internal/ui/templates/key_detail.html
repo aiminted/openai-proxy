@@ -1,31 +1,68 @@
 {{template "layout" .}}
 {{define "title"}}{{.Key.Owner}} · openai-proxy{{end}}
 {{define "content"}}
-  {{with .Key}}
-  <section class="card">
-    <p><a href="/">← 키 목록으로</a></p>
-    <h2><code>{{.Prefix}}…</code></h2>
-    <dl class="meta">
-      <dt>owner</dt><dd>{{.Owner}}</dd>
-      <dt>note</dt><dd>{{if .Note}}{{.Note}}{{else}}—{{end}}</dd>
-      <dt>created</dt><dd>{{.CreatedAt.Format "2006-01-02 15:04"}}</dd>
-      <dt>expires</dt><dd>{{fmtTime .ExpiresAt}}</dd>
-      <dt>last used</dt><dd>{{fmtTime .LastUsedAt}}</dd>
-      <dt>active</dt><dd>{{if .Active}}yes{{else}}no{{end}}</dd>
-      <dt>RPM limit</dt><dd>{{fmtIntPtr .RPMLimit}}</dd>
-      <dt>token quota</dt><dd>{{fmtInt64Ptr .TokenQuota}}</dd>
-      <dt>dollar quota</dt><dd>{{fmtFloatPtr .DollarQuota}}</dd>
-      <dt>total tokens</dt><dd>{{fmtInt .TotalTokens}}</dd>
-      <dt>total cost</dt><dd>{{fmtDollar .TotalCostUSD}}</dd>
-    </dl>
-  </section>
+{{with .Key}}
+<p class="back"><a href="/">← 키 목록</a></p>
 
-  <section class="card">
-    <h3>최근 요청</h3>
-    <div id="recent" data-key-id="{{.ID}}">
-      <p class="empty">불러오는 중…</p>
+<section class="card">
+  <header class="detail-head">
+    <h2><code>{{.Prefix}}…</code></h2>
+    <div>
+      {{if .Active}}<span class="badge ok">active</span>{{else}}<span class="badge off">revoked</span>{{end}}
     </div>
-    <script src="/static/recent.js" defer></script>
-  </section>
-  {{end}}
+  </header>
+
+  <form id="edit-form" data-key-id="{{.ID}}" class="form-grid">
+    <label class="span-2">
+      <span>owner</span>
+      <input type="text" name="owner" value="{{.Owner}}" required>
+    </label>
+    <label class="span-2">
+      <span>note</span>
+      <input type="text" name="note" value="{{.Note}}">
+    </label>
+    <label>
+      <span>expires (UTC)</span>
+      <input type="datetime-local" name="expires_at" id="expires-input"
+             {{if .ExpiresAt}}value="{{.ExpiresAt.UTC.Format "2006-01-02T15:04"}}"{{end}}>
+    </label>
+    <label>
+      <span>RPM limit</span>
+      <input type="number" name="rpm_limit" min="1"
+             {{with .RPMLimit}}value="{{.}}"{{end}}>
+    </label>
+    <label>
+      <span>token quota</span>
+      <input type="number" name="token_quota" min="1"
+             {{with .TokenQuota}}value="{{.}}"{{end}}>
+    </label>
+    <label>
+      <span>dollar quota</span>
+      <input type="number" name="dollar_quota" min="0" step="0.0001"
+             {{with .DollarQuota}}value="{{.}}"{{end}}>
+    </label>
+    <div class="form-row span-2">
+      <button type="submit" class="btn primary">변경 사항 저장</button>
+      <span id="edit-status" class="muted small"></span>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h3>요약</h3>
+  <dl class="meta-grid">
+    <dt>created</dt><dd>{{.CreatedAt.Local.Format "2006-01-02 15:04"}}</dd>
+    <dt>last used</dt><dd>{{fmtTime .LastUsedAt}}</dd>
+    <dt>total tokens</dt><dd>{{fmtInt .TotalTokens}}</dd>
+    <dt>total cost</dt><dd>{{fmtDollar .TotalCostUSD}}</dd>
+  </dl>
+</section>
+
+<section class="card">
+  <h3>최근 요청</h3>
+  <div id="recent" data-key-id="{{.ID}}">
+    <p class="empty">불러오는 중…</p>
+  </div>
+</section>
+{{end}}
 {{end}}

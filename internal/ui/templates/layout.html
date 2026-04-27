@@ -4,21 +4,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{block "title" .}}OpenAI Proxy{{end}}</title>
+  <title>{{block "title" .}}openai-proxy{{end}}</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:,">
 </head>
 <body>
   <header class="topbar">
     <a href="/" class="brand">openai-proxy</a>
-    <nav>
-      <form method="post" action="/logout" class="inline">
-        <button type="submit" class="link">logout</button>
-      </form>
-    </nav>
+    <form method="post" action="/logout" class="inline">
+      <button type="submit" class="link muted">logout</button>
+    </form>
   </header>
   <main>
     {{block "content" .}}{{end}}
   </main>
+  <script src="/static/app.js" defer></script>
 </body>
 </html>
 {{end}}

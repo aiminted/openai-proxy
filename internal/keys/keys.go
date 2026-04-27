@@ -186,6 +186,25 @@ func (s *Service) List(ctx context.Context) ([]KeyWithUsage, error) {
 	return out, rows.Err()
 }
 
+type Stats struct {
+	TotalKeys    int64
+	ActiveKeys   int64
+	TodayTokens  int64
+	TodayCostUSD float64
+}
+
+func (s *Service) Stats(ctx context.Context) (Stats, error) {
+	var st Stats
+	err := s.db.QueryRow(ctx, `
+		SELECT
+			(SELECT COUNT(*)::bigint FROM api_keys),
+			(SELECT COUNT(*)::bigint FROM api_keys WHERE active),
+			COALESCE((SELECT SUM(input_tokens + output_tokens)::bigint FROM usage_records WHERE created_at >= CURRENT_DATE), 0),
+			COALESCE((SELECT SUM(cost_usd) FROM usage_records WHERE created_at >= CURRENT_DATE), 0)
+	`).Scan(&st.TotalKeys, &st.ActiveKeys, &st.TodayTokens, &st.TodayCostUSD)
+	return st, err
+}
+
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*KeyWithUsage, error) {
 	row := s.db.QueryRow(ctx, `
 		SELECT k.id, k.prefix, k.owner, k.note, k.expires_at, k.rpm_limit, k.token_quota, k.dollar_quota, k.active, k.created_at, k.last_used_at,

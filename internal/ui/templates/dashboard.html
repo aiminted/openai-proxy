@@ -1,62 +1,112 @@
 {{template "layout" .}}
 {{define "title"}}keys · openai-proxy{{end}}
 {{define "content"}}
-  {{if .IssuedKey}}
-    <section class="card issued">
-      <h2>새 키 발급됨 — 한 번만 표시됩니다</h2>
-      <pre class="key">{{.IssuedKey}}</pre>
-      <p>이 값을 안전한 곳에 복사해 두세요. 다시 볼 수 없습니다.</p>
-      <a href="/">닫기</a>
-    </section>
-  {{end}}
+{{with .Stats}}
+<section class="stats">
+  <div class="stat"><span class="stat-label">total keys</span><span class="stat-value">{{fmtInt .TotalKeys}}</span></div>
+  <div class="stat"><span class="stat-label">active</span><span class="stat-value">{{fmtInt .ActiveKeys}}</span></div>
+  <div class="stat"><span class="stat-label">tokens today</span><span class="stat-value">{{fmtInt .TodayTokens}}</span></div>
+  <div class="stat"><span class="stat-label">cost today</span><span class="stat-value">{{fmtDollar .TodayCostUSD}}</span></div>
+</section>
+{{end}}
 
-  <section class="card">
-    <h2>새 API 키 발급</h2>
-    <form method="post" action="/keys" class="grid">
-      <label>owner<input type="text" name="owner" required placeholder="user@example.com 또는 이름"></label>
-      <label>note<input type="text" name="note" placeholder="자유 메모"></label>
-      <label>expires (선택)<input type="date" name="expires_at"></label>
-      <label>RPM limit (선택)<input type="number" name="rpm_limit" min="1" placeholder="분당 요청수"></label>
-      <label>token quota (선택)<input type="number" name="token_quota" min="1" placeholder="누적 토큰 한도"></label>
-      <label>dollar quota (선택)<input type="number" name="dollar_quota" min="0" step="0.01" placeholder="누적 달러 한도"></label>
-      <button type="submit">발급</button>
-    </form>
-  </section>
+{{if .IssuedKey}}
+<section class="card issued">
+  <div class="issued-head">
+    <h3>새 키 발급됨</h3>
+    <span class="muted">이 값은 한 번만 표시됩니다.</span>
+  </div>
+  <div class="issued-row">
+    <code class="issued-key" id="issued-key">{{.IssuedKey}}</code>
+    <button type="button" class="btn ghost" data-copy="#issued-key">copy</button>
+  </div>
+  <a href="/" class="muted small">닫기</a>
+</section>
+{{end}}
 
-  <section class="card">
-    <h2>발급된 키 ({{len .Keys}})</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>prefix</th><th>owner</th><th>tokens</th><th>cost</th>
-          <th>expires</th><th>RPM</th><th>last used</th><th>active</th><th></th>
+<section class="card">
+  <h2>새 API 키 발급</h2>
+  <form method="post" action="/keys" class="form-grid">
+    <label class="span-2">
+      <span>owner <em>required</em></span>
+      <input type="text" name="owner" required placeholder="user@example.com 또는 이름" autocomplete="off">
+    </label>
+    <label class="span-2">
+      <span>note</span>
+      <input type="text" name="note" placeholder="자유 메모" autocomplete="off">
+    </label>
+    <label>
+      <span>expires</span>
+      <div class="input-with-presets">
+        <input type="date" name="expires_at" id="expires-input">
+        <div class="presets" data-target="#expires-input">
+          <button type="button" data-days="7">+7d</button>
+          <button type="button" data-days="30">+30d</button>
+          <button type="button" data-days="90">+90d</button>
+          <button type="button" data-days="">없음</button>
+        </div>
+      </div>
+    </label>
+    <label>
+      <span>RPM limit</span>
+      <input type="number" name="rpm_limit" min="1" placeholder="분당 요청수">
+    </label>
+    <label>
+      <span>token quota</span>
+      <input type="number" name="token_quota" min="1" placeholder="누적 토큰 한도">
+    </label>
+    <label>
+      <span>dollar quota</span>
+      <input type="number" name="dollar_quota" min="0" step="0.01" placeholder="누적 달러 한도">
+    </label>
+    <button type="submit" class="btn primary span-2">발급</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="table-toolbar">
+    <h2>키 목록 <span class="muted">({{len .Keys}})</span></h2>
+    <div class="toolbar-controls">
+      <input type="search" id="key-search" placeholder="owner / prefix / note 검색…" autocomplete="off">
+      <label class="checkbox">
+        <input type="checkbox" id="hide-inactive" checked>
+        <span>비활성 숨김</span>
+      </label>
+    </div>
+  </div>
+  <table class="keys-table">
+    <thead>
+      <tr>
+        <th>prefix</th><th>owner</th><th class="num">tokens</th><th class="num">cost</th>
+        <th>expires</th><th class="num">RPM</th><th>last used</th><th>active</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="keys-tbody">
+      {{range .Keys}}
+        <tr data-active="{{.Active}}" data-search="{{.Owner}} {{.Prefix}} {{.Note}}">
+          <td><a href="/keys/{{.ID}}"><code>{{.Prefix}}…</code></a></td>
+          <td class="ellipsis" title="{{.Owner}}">{{.Owner}}</td>
+          <td class="num">{{fmtInt .TotalTokens}}</td>
+          <td class="num">{{fmtDollar .TotalCostUSD}}</td>
+          <td class="dim">{{fmtTime .ExpiresAt}}</td>
+          <td class="num">{{fmtIntPtr .RPMLimit}}</td>
+          <td class="dim">{{fmtTime .LastUsedAt}}</td>
+          <td>{{if .Active}}<span class="badge ok">on</span>{{else}}<span class="badge off">off</span>{{end}}</td>
+          <td class="actions">
+            <form method="post" action="/keys/{{.ID}}/active" class="inline">
+              <input type="hidden" name="active" value="{{if .Active}}false{{else}}true{{end}}">
+              <button type="submit" class="link" data-confirm="{{if .Active}}이 키를 비활성화할까요? 즉시 차단됩니다.{{else}}이 키를 다시 활성화할까요?{{end}}">{{if .Active}}revoke{{else}}reactivate{{end}}</button>
+            </form>
+            <form method="post" action="/keys/{{.ID}}/delete" class="inline">
+              <button type="submit" class="link danger" data-confirm="이 키와 모든 사용 기록을 영구 삭제합니다. 복구 불가.">delete</button>
+            </form>
+          </td>
         </tr>
-      </thead>
-      <tbody>
-        {{range .Keys}}
-          <tr>
-            <td><a href="/keys/{{.ID}}"><code>{{.Prefix}}…</code></a></td>
-            <td>{{.Owner}}</td>
-            <td>{{fmtInt .TotalTokens}}</td>
-            <td>{{fmtDollar .TotalCostUSD}}</td>
-            <td>{{fmtTime .ExpiresAt}}</td>
-            <td>{{fmtIntPtr .RPMLimit}}</td>
-            <td>{{fmtTime .LastUsedAt}}</td>
-            <td>{{if .Active}}<span class="badge ok">on</span>{{else}}<span class="badge off">off</span>{{end}}</td>
-            <td>
-              <form method="post" action="/keys/{{.ID}}/active" class="inline">
-                <input type="hidden" name="active" value="{{if .Active}}false{{else}}true{{end}}">
-                <button type="submit" class="link">{{if .Active}}revoke{{else}}reactivate{{end}}</button>
-              </form>
-              <form method="post" action="/keys/{{.ID}}/delete" class="inline" onsubmit="return confirm('정말 삭제할까요? 사용 기록도 같이 삭제됩니다.')">
-                <button type="submit" class="link danger">delete</button>
-              </form>
-            </td>
-          </tr>
-        {{else}}
-          <tr><td colspan="9" class="empty">아직 발급된 키가 없습니다.</td></tr>
-        {{end}}
-      </tbody>
-    </table>
-  </section>
+      {{else}}
+        <tr><td colspan="9" class="empty">아직 발급된 키가 없습니다.</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  <p class="empty hidden" id="empty-filtered">검색 결과 없음.</p>
+</section>
 {{end}}

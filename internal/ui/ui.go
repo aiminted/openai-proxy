@@ -23,6 +23,7 @@ type Handler struct {
 	pages map[string]*template.Template
 	keys  *keys.Service
 	auth  *admin.Auth
+	flash *flash
 }
 
 // pages that extend layout.html via {{template "layout" .}} + {{define "content"}}.
@@ -32,7 +33,7 @@ var layoutPages = []string{"dashboard.html", "key_detail.html"}
 // standalone pages that do not include layout.html.
 var standalonePages = []string{"login.html"}
 
-func New(k *keys.Service, auth *admin.Auth) (*Handler, error) {
+func New(k *keys.Service, auth *admin.Auth, sessionSecret string, cookieSecure bool) (*Handler, error) {
 	funcs := template.FuncMap{
 		"fmtTime": func(t *time.Time) string {
 			if t == nil {
@@ -62,7 +63,12 @@ func New(k *keys.Service, auth *admin.Auth) (*Handler, error) {
 		}
 		pages[name] = t
 	}
-	return &Handler{pages: pages, keys: k, auth: auth}, nil
+	return &Handler{
+		pages: pages,
+		keys:  k,
+		auth:  auth,
+		flash: newFlash(sessionSecret, cookieSecure),
+	}, nil
 }
 
 func (h *Handler) Mount(mux *http.ServeMux) {
@@ -108,17 +114,22 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
-	list, err := h.keys.List(r.Context())
+	ctx := r.Context()
+	list, err := h.keys.List(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	flash := r.URL.Query().Get("flash")
-	plain := r.URL.Query().Get("issued")
+	stats, err := h.keys.Stats(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	issued := h.flash.pop(w, r)
 	h.render(w, "dashboard.html", map[string]any{
-		"Keys":     list,
-		"Flash":    flash,
-		"IssuedKey": plain,
+		"Keys":      list,
+		"Stats":     stats,
+		"IssuedKey": issued,
 	})
 }
 
@@ -167,7 +178,7 @@ func (h *Handler) createKey(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if params.Owner == "" {
-		http.Redirect(w, r, "/?flash=owner+required", http.StatusSeeOther)
+		http.Error(w, "owner is required", http.StatusBadRequest)
 		return
 	}
 	issued, err := h.keys.Issue(r.Context(), params)
@@ -175,7 +186,8 @@ func (h *Handler) createKey(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/?issued="+issued.Plain, http.StatusSeeOther)
+	h.flash.set(w, issued.Plain, 60*time.Second)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (h *Handler) toggleActive(w http.ResponseWriter, r *http.Request) {
