@@ -15,23 +15,103 @@ import (
 )
 
 type API struct {
-	keys *keys.Service
-	db   *pgxpool.Pool
+	keys    *keys.Service
+	db      *pgxpool.Pool
+	auth    *Auth
+	origins []string
 }
 
-func NewAPI(k *keys.Service, db *pgxpool.Pool) *API {
-	return &API{keys: k, db: db}
+func NewAPI(k *keys.Service, db *pgxpool.Pool, auth *Auth, allowedOrigins []string) *API {
+	return &API{keys: k, db: db, auth: auth, origins: allowedOrigins}
 }
 
 func (a *API) Mount(mux *http.ServeMux) {
-	mux.HandleFunc("GET /admin/api/keys", a.listKeys)
-	mux.HandleFunc("POST /admin/api/keys", a.createKey)
-	mux.HandleFunc("GET /admin/api/keys/{id}", a.getKey)
-	mux.HandleFunc("PATCH /admin/api/keys/{id}", a.updateKey)
-	mux.HandleFunc("DELETE /admin/api/keys/{id}", a.deleteKey)
-	mux.HandleFunc("POST /admin/api/keys/{id}/active", a.toggleActive)
-	mux.HandleFunc("GET /admin/api/usage", a.usageSummary)
-	mux.HandleFunc("GET /admin/api/usage/{id}/recent", a.usageRecent)
+	mux.HandleFunc("POST /admin/api/login", a.login)
+	mux.HandleFunc("GET /admin/api/me", a.me)
+
+	authed := func(h http.HandlerFunc) http.Handler { return a.auth.Middleware(h) }
+	mux.Handle("GET /admin/api/stats", authed(a.stats))
+	mux.Handle("GET /admin/api/keys", authed(a.listKeys))
+	mux.Handle("POST /admin/api/keys", authed(a.createKey))
+	mux.Handle("GET /admin/api/keys/{id}", authed(a.getKey))
+	mux.Handle("PATCH /admin/api/keys/{id}", authed(a.updateKey))
+	mux.Handle("DELETE /admin/api/keys/{id}", authed(a.deleteKey))
+	mux.Handle("POST /admin/api/keys/{id}/active", authed(a.toggleActive))
+	mux.Handle("GET /admin/api/usage", authed(a.usageSummary))
+	mux.Handle("GET /admin/api/usage/{id}/recent", authed(a.usageRecent))
+}
+
+// CORS wraps an admin-API mux. Allowed origins are exact-match strings
+// (Origin header). Preflight requests get 204 with the right headers.
+func (a *API) CORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" && a.originAllowed(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Access-Control-Max-Age", "600")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (a *API) originAllowed(origin string) bool {
+	for _, o := range a.origins {
+		if o == "*" || o == origin {
+			return true
+		}
+	}
+	return false
+}
+
+type loginReq struct {
+	Password string `json:"password"`
+}
+
+func (a *API) login(w http.ResponseWriter, r *http.Request) {
+	var req loginReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if !a.auth.VerifyPassword(req.Password) {
+		// modest constant-ish delay to slow naive bruteforce + smooth timing.
+		time.Sleep(200 * time.Millisecond)
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid password"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":      a.auth.IssueToken(),
+		"expires_in": int(a.auth.TTL().Seconds()),
+	})
+}
+
+func (a *API) me(w http.ResponseWriter, r *http.Request) {
+	if err := a.auth.ValidateBearer(r); err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"authenticated": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true})
+}
+
+func (a *API) stats(w http.ResponseWriter, r *http.Request) {
+	st, err := a.keys.Stats(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total_keys":      st.TotalKeys,
+		"active_keys":     st.ActiveKeys,
+		"today_tokens":    st.TodayTokens,
+		"today_cost_usd":  st.TodayCostUSD,
+	})
 }
 
 type keyDTO struct {

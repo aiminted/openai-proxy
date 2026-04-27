@@ -5,120 +5,77 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const (
-	cookieName = "openai_proxy_session"
-)
+var ErrUnauthorized = errors.New("unauthorized")
 
+// Auth issues and validates short-lived signed Bearer tokens. The shape is
+// "<exp-unix>.<base64url-hmac>", same idea as the previous session cookie but
+// carried in the Authorization header so the SPA admin can talk to the API
+// across origins without cookie/CSRF complications.
 type Auth struct {
 	password []byte
 	secret   []byte
 	ttl      time.Duration
-	secure   bool
 }
 
-func NewAuth(password, secret string, ttl time.Duration, secure bool) *Auth {
-	return &Auth{
-		password: []byte(password),
-		secret:   []byte(secret),
-		ttl:      ttl,
-		secure:   secure,
-	}
+func NewAuth(password, secret string, ttl time.Duration) *Auth {
+	return &Auth{password: []byte(password), secret: []byte(secret), ttl: ttl}
 }
 
-func (a *Auth) Verify(submitted string) bool {
+func (a *Auth) TTL() time.Duration { return a.ttl }
+
+func (a *Auth) VerifyPassword(submitted string) bool {
 	return subtle.ConstantTimeCompare([]byte(submitted), a.password) == 1
 }
 
-func (a *Auth) IssueCookie(w http.ResponseWriter) {
+func (a *Auth) IssueToken() string {
 	exp := time.Now().Add(a.ttl).Unix()
-	value := signValue(a.secret, exp)
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    value,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   a.secure,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Add(a.ttl),
-		MaxAge:   int(a.ttl.Seconds()),
-	})
-}
-
-func (a *Auth) Clear(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   a.secure,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
-	})
-}
-
-func (a *Auth) IsAuthenticated(r *http.Request) bool {
-	c, err := r.Cookie(cookieName)
-	if err != nil || c.Value == "" {
-		return false
-	}
-	exp, ok := verifyValue(a.secret, c.Value)
-	if !ok {
-		return false
-	}
-	return time.Unix(exp, 0).After(time.Now())
-}
-
-// Middleware redirects unauthenticated requests to /login.
-func (a *Auth) Middleware(loginPath string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.IsAuthenticated(r) {
-			http.Redirect(w, r, loginPath, http.StatusSeeOther)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// APIMiddleware returns 401 instead of redirecting (for /admin/api/*).
-func (a *Auth) APIMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.IsAuthenticated(r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func signValue(secret []byte, exp int64) string {
 	expStr := strconv.FormatInt(exp, 10)
-	mac := hmac.New(sha256.New, secret)
+	mac := hmac.New(sha256.New, a.secret)
 	mac.Write([]byte(expStr))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return expStr + "." + sig
 }
 
-func verifyValue(secret []byte, value string) (int64, bool) {
-	parts := strings.SplitN(value, ".", 2)
+func (a *Auth) ValidateBearer(r *http.Request) error {
+	tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || tok == "" {
+		return ErrUnauthorized
+	}
+	parts := strings.SplitN(tok, ".", 2)
 	if len(parts) != 2 {
-		return 0, false
+		return ErrUnauthorized
 	}
 	exp, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		return 0, false
+		return ErrUnauthorized
 	}
-	mac := hmac.New(sha256.New, secret)
+	mac := hmac.New(sha256.New, a.secret)
 	mac.Write([]byte(parts[0]))
 	expected := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	if subtle.ConstantTimeCompare([]byte(expected), []byte(parts[1])) != 1 {
-		return 0, false
+		return ErrUnauthorized
 	}
-	return exp, true
+	if time.Unix(exp, 0).Before(time.Now()) {
+		return ErrUnauthorized
+	}
+	return nil
 }
 
+func (a *Auth) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := a.ValidateBearer(r); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}

@@ -19,7 +19,6 @@ import (
 	"github.com/aiminted/openai-proxy/internal/quota"
 	"github.com/aiminted/openai-proxy/internal/ratelimit"
 	"github.com/aiminted/openai-proxy/internal/store"
-	"github.com/aiminted/openai-proxy/internal/ui"
 	"github.com/aiminted/openai-proxy/internal/usage"
 )
 
@@ -78,25 +77,19 @@ func run(logger *slog.Logger) error {
 		Timeout:     cfg.StreamTimeout,
 	})
 
-	auth := admin.NewAuth(cfg.AdminPassword, cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure)
-	api := admin.NewAPI(keySvc, st.DB)
-	uiHandler, err := ui.New(keySvc, auth, cfg.SessionSecret, cfg.CookieSecure)
-	if err != nil {
-		return err
-	}
+	auth := admin.NewAuth(cfg.AdminPassword, cfg.SessionSecret, cfg.SessionTTL)
+	api := admin.NewAPI(keySvc, st.DB, auth, cfg.CORSOrigins)
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
-	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })
+	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })
 
 	mux.Handle("/v1/", proxyHandler)
 
 	apiMux := http.NewServeMux()
 	api.Mount(apiMux)
-	mux.Handle("/admin/api/", auth.APIMiddleware(apiMux))
-
-	uiHandler.Mount(mux)
+	mux.Handle("/admin/api/", api.CORS(apiMux))
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,

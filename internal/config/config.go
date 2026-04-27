@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,7 +19,8 @@ type Config struct {
 	AdminPassword string
 	SessionSecret string
 	SessionTTL    time.Duration
-	CookieSecure  bool
+
+	CORSOrigins []string
 
 	KeyPrefix      string
 	PricingPath    string
@@ -38,7 +40,8 @@ func Load() (*Config, error) {
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
 		SessionSecret: os.Getenv("SESSION_SECRET"),
 		SessionTTL:    durationEnv("SESSION_TTL", 24*time.Hour),
-		CookieSecure:  env("COOKIE_SECURE", "true") != "false",
+
+		CORSOrigins: parseList(os.Getenv("CORS_ORIGINS")),
 
 		KeyPrefix:      env("KEY_PREFIX", "sk-pxy-"),
 		PricingPath:    env("PRICING_PATH", "pricing.yaml"),
@@ -62,6 +65,20 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("SESSION_SECRET must be at least 16 characters")
 	}
 	return cfg, nil
+}
+
+func parseList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func env(key, def string) string {
