@@ -12,8 +12,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/in-jun/openai-proxy/internal/admin"
-	"github.com/in-jun/openai-proxy/internal/keys"
+	"github.com/aiminted/openai-proxy/internal/admin"
+	"github.com/aiminted/openai-proxy/internal/keys"
 )
 
 //go:embed templates/*.html static/*

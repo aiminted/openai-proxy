@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/in-jun/openai-proxy/internal/keys"
+	"github.com/aiminted/openai-proxy/internal/keys"
 )
 
 type API struct {

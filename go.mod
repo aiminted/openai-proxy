@@ -1,4 +1,4 @@
-module github.com/in-jun/openai-proxy
+module github.com/aiminted/openai-proxy
 
 go 1.25.4
 

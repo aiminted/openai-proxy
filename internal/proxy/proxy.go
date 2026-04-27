@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/in-jun/openai-proxy/internal/keys"
-	"github.com/in-jun/openai-proxy/internal/pricing"
-	"github.com/in-jun/openai-proxy/internal/quota"
-	"github.com/in-jun/openai-proxy/internal/ratelimit"
-	"github.com/in-jun/openai-proxy/internal/usage"
+	"github.com/aiminted/openai-proxy/internal/keys"
+	"github.com/aiminted/openai-proxy/internal/pricing"
+	"github.com/aiminted/openai-proxy/internal/quota"
+	"github.com/aiminted/openai-proxy/internal/ratelimit"
+	"github.com/aiminted/openai-proxy/internal/usage"
 )
 
 // captureMax is the trailing window of upstream response bytes we keep so we
