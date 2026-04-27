@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     expires_at    TIMESTAMPTZ,
     rpm_limit     INTEGER,
     token_quota   BIGINT,
-    dollar_quota  NUMERIC(12,4),
+    dollar_quota  NUMERIC(14,8),
     active        BOOLEAN NOT NULL DEFAULT TRUE,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_used_at  TIMESTAMPTZ
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS usage_records (
     input_tokens    INTEGER NOT NULL DEFAULT 0,
     output_tokens   INTEGER NOT NULL DEFAULT 0,
     cached_tokens   INTEGER NOT NULL DEFAULT 0,
-    cost_usd        NUMERIC(12,6) NOT NULL DEFAULT 0,
+    cost_usd        NUMERIC(14,8) NOT NULL DEFAULT 0,
     status          INTEGER NOT NULL,
     duration_ms     INTEGER NOT NULL,
     error_message   TEXT,
@@ -38,6 +38,6 @@ CREATE INDEX IF NOT EXISTS usage_records_time_idx ON usage_records(created_at DE
 CREATE TABLE IF NOT EXISTS quota_totals (
     key_id          UUID PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
     total_tokens    BIGINT NOT NULL DEFAULT 0,
-    total_cost_usd  NUMERIC(14,6) NOT NULL DEFAULT 0,
+    total_cost_usd  NUMERIC(14,8) NOT NULL DEFAULT 0,
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
