@@ -20,10 +20,17 @@ import (
 var assets embed.FS
 
 type Handler struct {
-	tpl  *template.Template
-	keys *keys.Service
-	auth *admin.Auth
+	pages map[string]*template.Template
+	keys  *keys.Service
+	auth  *admin.Auth
 }
+
+// pages that extend layout.html via {{template "layout" .}} + {{define "content"}}.
+// Each is parsed into its own template set so define blocks don't collide.
+var layoutPages = []string{"dashboard.html", "key_detail.html"}
+
+// standalone pages that do not include layout.html.
+var standalonePages = []string{"login.html"}
 
 func New(k *keys.Service, auth *admin.Auth) (*Handler, error) {
 	funcs := template.FuncMap{
@@ -33,36 +40,29 @@ func New(k *keys.Service, auth *admin.Auth) (*Handler, error) {
 			}
 			return t.Local().Format("2006-01-02 15:04")
 		},
-		"fmtDollar": func(v float64) string {
-			return fmt.Sprintf("$%.4f", v)
-		},
-		"fmtInt": func(v int64) string {
-			return formatInt(v)
-		},
-		"fmtIntPtr": func(v *int) string {
-			if v == nil {
-				return "—"
-			}
-			return strconv.Itoa(*v)
-		},
-		"fmtInt64Ptr": func(v *int64) string {
-			if v == nil {
-				return "—"
-			}
-			return formatInt(*v)
-		},
-		"fmtFloatPtr": func(v *float64) string {
-			if v == nil {
-				return "—"
-			}
-			return fmt.Sprintf("$%.2f", *v)
-		},
+		"fmtDollar":   func(v float64) string { return fmt.Sprintf("$%.4f", v) },
+		"fmtInt":      formatInt,
+		"fmtIntPtr":   func(v *int) string { if v == nil { return "—" }; return strconv.Itoa(*v) },
+		"fmtInt64Ptr": func(v *int64) string { if v == nil { return "—" }; return formatInt(*v) },
+		"fmtFloatPtr": func(v *float64) string { if v == nil { return "—" }; return fmt.Sprintf("$%.2f", *v) },
 	}
-	tpl, err := template.New("").Funcs(funcs).ParseFS(assets, "templates/*.html")
-	if err != nil {
-		return nil, err
+
+	pages := map[string]*template.Template{}
+	for _, name := range layoutPages {
+		t, err := template.New(name).Funcs(funcs).ParseFS(assets, "templates/layout.html", "templates/"+name)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", name, err)
+		}
+		pages[name] = t
 	}
-	return &Handler{tpl: tpl, keys: k, auth: auth}, nil
+	for _, name := range standalonePages {
+		t, err := template.New(name).Funcs(funcs).ParseFS(assets, "templates/"+name)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", name, err)
+		}
+		pages[name] = t
+	}
+	return &Handler{pages: pages, keys: k, auth: auth}, nil
 }
 
 func (h *Handler) Mount(mux *http.ServeMux) {
@@ -210,8 +210,13 @@ func (h *Handler) deleteKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data any) {
+	tpl, ok := h.pages[name]
+	if !ok {
+		http.Error(w, "template not found: "+name, http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.tpl.ExecuteTemplate(w, name, data); err != nil {
+	if err := tpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
