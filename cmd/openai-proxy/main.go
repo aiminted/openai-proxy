@@ -16,10 +16,7 @@ import (
 	"github.com/aiminted/openai-proxy/internal/keys"
 	"github.com/aiminted/openai-proxy/internal/pricing"
 	"github.com/aiminted/openai-proxy/internal/proxy"
-	"github.com/aiminted/openai-proxy/internal/quota"
-	"github.com/aiminted/openai-proxy/internal/ratelimit"
 	"github.com/aiminted/openai-proxy/internal/store"
-	"github.com/aiminted/openai-proxy/internal/usage"
 )
 
 func main() {
@@ -44,7 +41,6 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer st.Close()
-
 	if err := st.Migrate(rootCtx); err != nil {
 		return err
 	}
@@ -61,33 +57,23 @@ func run(logger *slog.Logger) error {
 	}
 
 	keySvc := keys.NewService(st.DB, st.Redis, cfg.KeyPrefix, cfg.VerifyCacheTTL)
-	limiter := ratelimit.New(st.Redis)
-	quotaSvc := quota.New(st.DB, st.Redis)
-	recorder := usage.NewRecorder(st.DB)
-
+	auth := admin.NewAuth(cfg.AdminPassword, cfg.SessionSecret, cfg.SessionTTL)
+	api := admin.NewAPI(keySvc, st.DB, auth, cfg.CORSOrigins)
 	proxyHandler := proxy.New(proxy.Deps{
 		Upstream:    upstream,
 		UpstreamKey: cfg.UpstreamAPIKey,
 		Keys:        keySvc,
-		Limiter:     limiter,
-		Quota:       quotaSvc,
 		Pricing:     prc,
-		Recorder:    recorder,
 		Logger:      logger,
 		Timeout:     cfg.StreamTimeout,
 	})
 
-	auth := admin.NewAuth(cfg.AdminPassword, cfg.SessionSecret, cfg.SessionTTL)
-	api := admin.NewAPI(keySvc, st.DB, auth, cfg.CORSOrigins)
-
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", okHandler)
+	mux.HandleFunc("GET /ready", okHandler)
 
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })
-	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })
-
-	// CORS applies to both the proxy and the admin API: any origin in
-	// CORS_ORIGINS can call /v1/* from the browser (e.g. admin's "test now"
-	// button) and /admin/api/* (the SPA itself).
+	// CORS-wrapped: anything in CORS_ORIGINS may hit /v1/* (admin's "test now"
+	// button) and /admin/api/* (the SPA) from the browser.
 	mux.Handle("/v1/", api.CORS(proxyHandler))
 
 	apiMux := http.NewServeMux()
@@ -108,6 +94,8 @@ func run(logger *slog.Logger) error {
 	}
 	return nil
 }
+
+func okHandler(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) }
 
 func gracefulShutdown(ctx context.Context, cancel context.CancelFunc, server *http.Server, logger *slog.Logger) {
 	sigChan := make(chan os.Signal, 1)
@@ -139,6 +127,8 @@ func withRequestLogging(logger *slog.Logger, h http.Handler) http.Handler {
 	})
 }
 
+// statusWriter remembers the response status so the access log can record it.
+// It also exposes Flush so SSE pass-through still works.
 type statusWriter struct {
 	http.ResponseWriter
 	status int
@@ -163,4 +153,3 @@ func (s *statusWriter) Flush() {
 		f.Flush()
 	}
 }
-
