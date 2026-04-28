@@ -38,6 +38,8 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.Handle("DELETE /admin/api/keys/{id}", authed(a.deleteKey))
 	mux.Handle("POST /admin/api/keys/{id}/active", authed(a.toggleActive))
 	mux.Handle("GET /admin/api/usage", authed(a.usageSummary))
+	mux.Handle("GET /admin/api/usage/by-model", authed(a.usageByModel))
+	mux.Handle("GET /admin/api/usage/recent", authed(a.usageRecentAll))
 	mux.Handle("GET /admin/api/usage/{id}/recent", authed(a.usageRecent))
 }
 
@@ -370,6 +372,97 @@ func (a *API) usageRecent(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var u recentRow
 		if err := rows.Scan(&u.CreatedAt, &u.Endpoint, &u.Model, &u.Streaming, &u.InputTokens, &u.OutputTokens, &u.CostUSD, &u.Status, &u.DurationMS); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		out = append(out, u)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type modelRow struct {
+	Model    string  `json:"model"`
+	Tokens   int64   `json:"tokens"`
+	CostUSD  float64 `json:"cost_usd"`
+	Requests int64   `json:"requests"`
+}
+
+func (a *API) usageByModel(w http.ResponseWriter, r *http.Request) {
+	days := 30
+	if v := r.URL.Query().Get("days"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 365 {
+			days = n
+		}
+	}
+	rows, err := a.db.Query(r.Context(), `
+		SELECT COALESCE(NULLIF(model, ''), '(unknown)'),
+		       COALESCE(SUM(input_tokens + output_tokens), 0),
+		       COALESCE(SUM(cost_usd), 0),
+		       COUNT(*)
+		FROM usage_records
+		WHERE created_at >= now() - make_interval(days => $1)
+		GROUP BY 1
+		ORDER BY 2 DESC
+		LIMIT 20
+	`, days)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var out []modelRow
+	for rows.Next() {
+		var m modelRow
+		if err := rows.Scan(&m.Model, &m.Tokens, &m.CostUSD, &m.Requests); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		out = append(out, m)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type recentAllRow struct {
+	CreatedAt    string  `json:"created_at"`
+	KeyID        string  `json:"key_id"`
+	KeyPrefix    string  `json:"key_prefix"`
+	KeyOwner     string  `json:"key_owner"`
+	Endpoint     string  `json:"endpoint"`
+	Model        string  `json:"model"`
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	CostUSD      float64 `json:"cost_usd"`
+	Status       int     `json:"status"`
+	DurationMS   int     `json:"duration_ms"`
+}
+
+func (a *API) usageRecentAll(w http.ResponseWriter, r *http.Request) {
+	limit := 30
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	rows, err := a.db.Query(r.Context(), `
+		SELECT to_char(u.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		       u.key_id, k.prefix, k.owner,
+		       u.endpoint, COALESCE(u.model, ''),
+		       u.input_tokens, u.output_tokens, u.cost_usd, u.status, u.duration_ms
+		FROM usage_records u
+		JOIN api_keys k ON k.id = u.key_id
+		ORDER BY u.created_at DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var out []recentAllRow
+	for rows.Next() {
+		var u recentAllRow
+		if err := rows.Scan(&u.CreatedAt, &u.KeyID, &u.KeyPrefix, &u.KeyOwner, &u.Endpoint, &u.Model,
+			&u.InputTokens, &u.OutputTokens, &u.CostUSD, &u.Status, &u.DurationMS); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
