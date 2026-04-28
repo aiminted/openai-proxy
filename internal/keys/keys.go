@@ -204,7 +204,13 @@ func (s *Service) List(ctx context.Context) ([]KeyWithUsage, error) {
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*KeyWithUsage, error) {
 	var k KeyWithUsage
-	err := s.db.QueryRow(ctx, listKeysSQL+" WHERE k.id = $1", id).Scan(
+	err := s.db.QueryRow(ctx, `
+		SELECT k.id, k.prefix, k.owner, k.note, k.expires_at, k.rpm_limit, k.token_quota, k.dollar_quota, k.active, k.created_at, k.last_used_at,
+		       COALESCE(q.total_tokens, 0), COALESCE(q.total_cost_usd, 0)
+		FROM api_keys k
+		LEFT JOIN quota_totals q ON q.key_id = k.id
+		WHERE k.id = $1
+	`, id).Scan(
 		&k.ID, &k.Prefix, &k.Owner, &k.Note, &k.ExpiresAt, &k.RPMLimit, &k.TokenQuota, &k.DollarQuota,
 		&k.Active, &k.CreatedAt, &k.LastUsedAt, &k.TotalTokens, &k.TotalCostUSD)
 	if errors.Is(err, pgx.ErrNoRows) {
