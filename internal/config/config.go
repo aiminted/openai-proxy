@@ -11,10 +11,11 @@ import (
 type Config struct {
 	ListenAddr     string
 	UpstreamURL    string
-	UpstreamAPIKey string
+	UpstreamAPIKey string // bootstrap only; persistent storage is upstream_keys table
 
-	DatabaseURL string
-	RedisURL    string
+	DatabaseURL      string
+	RedisURL         string
+	KeyEncryptionKey string // 32-byte hex; encrypts upstream keys at rest
 
 	AdminPassword string
 	SessionSecret string
@@ -22,10 +23,11 @@ type Config struct {
 
 	CORSOrigins []string
 
-	KeyPrefix      string
-	PricingPath    string
-	StreamTimeout  time.Duration
-	VerifyCacheTTL time.Duration
+	KeyPrefix         string
+	PricingPath       string
+	StreamTimeout     time.Duration
+	VerifyCacheTTL    time.Duration
+	UpstreamRefresh   time.Duration
 }
 
 func Load() (*Config, error) {
@@ -34,8 +36,9 @@ func Load() (*Config, error) {
 		UpstreamURL:    env("UPSTREAM_URL", "https://api.openai.com"),
 		UpstreamAPIKey: os.Getenv("OPENAI_API_KEY"),
 
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		RedisURL:    os.Getenv("REDIS_URL"),
+		DatabaseURL:      os.Getenv("DATABASE_URL"),
+		RedisURL:         os.Getenv("REDIS_URL"),
+		KeyEncryptionKey: os.Getenv("KEY_ENCRYPTION_KEY"),
 
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
 		SessionSecret: os.Getenv("SESSION_SECRET"),
@@ -45,16 +48,20 @@ func Load() (*Config, error) {
 
 		KeyPrefix:      env("KEY_PREFIX", "sk-pxy-"),
 		PricingPath:    env("PRICING_PATH", "pricing.yaml"),
-		StreamTimeout:  durationEnv("STREAM_TIMEOUT", 30*time.Minute),
-		VerifyCacheTTL: durationEnv("VERIFY_CACHE_TTL", 60*time.Second),
+		StreamTimeout:   durationEnv("STREAM_TIMEOUT", 30*time.Minute),
+		VerifyCacheTTL:  durationEnv("VERIFY_CACHE_TTL", 60*time.Second),
+		UpstreamRefresh: durationEnv("UPSTREAM_REFRESH", 30*time.Second),
 	}
 
+	// OPENAI_API_KEY is no longer hard-required: upstream key now lives in
+	// the upstream_keys table after first boot, and can be set/rotated via
+	// the admin UI. The env still works for first-boot bootstrap.
 	required := map[string]string{
-		"OPENAI_API_KEY":  cfg.UpstreamAPIKey,
-		"DATABASE_URL":    cfg.DatabaseURL,
-		"REDIS_URL":       cfg.RedisURL,
-		"ADMIN_PASSWORD":  cfg.AdminPassword,
-		"SESSION_SECRET":  cfg.SessionSecret,
+		"DATABASE_URL":       cfg.DatabaseURL,
+		"REDIS_URL":          cfg.RedisURL,
+		"ADMIN_PASSWORD":     cfg.AdminPassword,
+		"SESSION_SECRET":     cfg.SessionSecret,
+		"KEY_ENCRYPTION_KEY": cfg.KeyEncryptionKey,
 	}
 	for name, val := range required {
 		if val == "" {

@@ -57,11 +57,23 @@ func run(logger *slog.Logger) error {
 	}
 
 	keySvc := keys.NewService(st.DB, st.Redis, cfg.KeyPrefix, cfg.VerifyCacheTTL)
+
+	upstreamSt, err := keys.NewUpstreamStore(st.DB, cfg.KeyEncryptionKey)
+	if err != nil {
+		return err
+	}
+	if err := upstreamSt.Bootstrap(rootCtx, cfg.UpstreamAPIKey); err != nil {
+		return err
+	}
+	upstreamSt.StartRefresher(rootCtx, cfg.UpstreamRefresh, func(err error) {
+		logger.Warn("upstream key refresh", "error", err)
+	})
+
 	auth := admin.NewAuth(cfg.AdminPassword, cfg.SessionSecret, cfg.SessionTTL)
-	api := admin.NewAPI(keySvc, st.DB, auth, cfg.CORSOrigins)
+	api := admin.NewAPI(keySvc, upstreamSt, st.DB, auth, cfg.CORSOrigins)
 	proxyHandler := proxy.New(proxy.Deps{
 		Upstream:    upstream,
-		UpstreamKey: cfg.UpstreamAPIKey,
+		UpstreamKey: upstreamSt.Current,
 		Keys:        keySvc,
 		Pricing:     prc,
 		Logger:      logger,

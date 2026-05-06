@@ -15,14 +15,15 @@ import (
 )
 
 type API struct {
-	keys    *keys.Service
-	db      *pgxpool.Pool
-	auth    *Auth
-	origins []string
+	keys     *keys.Service
+	upstream *keys.UpstreamStore
+	db       *pgxpool.Pool
+	auth     *Auth
+	origins  []string
 }
 
-func NewAPI(k *keys.Service, db *pgxpool.Pool, auth *Auth, allowedOrigins []string) *API {
-	return &API{keys: k, db: db, auth: auth, origins: allowedOrigins}
+func NewAPI(k *keys.Service, upstream *keys.UpstreamStore, db *pgxpool.Pool, auth *Auth, allowedOrigins []string) *API {
+	return &API{keys: k, upstream: upstream, db: db, auth: auth, origins: allowedOrigins}
 }
 
 func (a *API) Mount(mux *http.ServeMux) {
@@ -41,6 +42,8 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.Handle("GET /admin/api/usage/by-model", authed(a.usageByModel))
 	mux.Handle("GET /admin/api/usage/recent", authed(a.usageRecentAll))
 	mux.Handle("GET /admin/api/usage/{id}/recent", authed(a.usageRecent))
+	mux.Handle("GET /admin/api/upstream-keys", authed(a.upstreamKeys))
+	mux.Handle("POST /admin/api/upstream-keys", authed(a.rotateUpstreamKey))
 }
 
 // CORS wraps an admin-API mux. Allowed origins are exact-match strings
@@ -469,6 +472,54 @@ func (a *API) usageRecentAll(w http.ResponseWriter, r *http.Request) {
 		out = append(out, u)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+type upstreamKeyDTO struct {
+	ID         int64   `json:"id"`
+	Prefix     string  `json:"prefix"`
+	Note       string  `json:"note"`
+	Active     bool    `json:"active"`
+	CreatedAt  string  `json:"created_at"`
+	RetiredAt  *string `json:"retired_at"`
+}
+
+func (a *API) upstreamKeys(w http.ResponseWriter, r *http.Request) {
+	hist, err := a.upstream.History(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	out := make([]upstreamKeyDTO, 0, len(hist))
+	for _, k := range hist {
+		d := upstreamKeyDTO{
+			ID: k.ID, Prefix: k.Prefix, Note: k.Note, Active: k.Active,
+			CreatedAt: k.CreatedAt.Format(time.RFC3339),
+		}
+		if k.RetiredAt != nil {
+			s := k.RetiredAt.Format(time.RFC3339)
+			d.RetiredAt = &s
+		}
+		out = append(out, d)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type rotateUpstreamReq struct {
+	Key  string `json:"key"`
+	Note string `json:"note"`
+}
+
+func (a *API) rotateUpstreamKey(w http.ResponseWriter, r *http.Request) {
+	var req rotateUpstreamReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if err := a.upstream.Set(r.Context(), req.Key, req.Note); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func buildIssueParams(req createReq) (keys.IssueParams, error) {

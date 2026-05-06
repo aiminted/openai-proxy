@@ -29,7 +29,7 @@ const captureMax = 2 * 1024 * 1024
 
 type Deps struct {
 	Upstream    *url.URL
-	UpstreamKey string
+	UpstreamKey func() string // looked up per request so rotations propagate
 	Keys        *keys.Service
 	Pricing     *pricing.Pricing
 	Logger      *slog.Logger
@@ -154,7 +154,7 @@ func (p *Proxy) buildUpstreamRequest(r *http.Request, body io.Reader, contentLen
 		return nil, err
 	}
 	copyHeaders(req.Header, r.Header)
-	req.Header.Set("Authorization", "Bearer "+p.deps.UpstreamKey)
+	req.Header.Set("Authorization", "Bearer "+p.deps.UpstreamKey())
 	req.Header.Del("X-Forwarded-For")
 	req.Header.Del("X-Forwarded-Host")
 	// Let Go's Transport handle gzip transparently — without this, the tail
